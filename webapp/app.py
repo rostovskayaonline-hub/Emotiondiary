@@ -30,8 +30,8 @@ load_dotenv()
 
 app = Flask(
     __name__,
-    static_folder="static",
-    template_folder="templates",
+    static_folder=os.path.join(os.path.dirname(__file__), "static"),
+    template_folder=os.path.join(os.path.dirname(__file__), "templates"),
 )
 CORS(app)
 
@@ -87,12 +87,12 @@ def get_user_id_from_request():
 
 @app.route("/")
 def index():
-    return send_from_directory("templates", "index.html")
+    return send_from_directory(app.template_folder, "index.html")
 
 
 @app.route("/static/<path:path>")
 def serve_static(path):
-    return send_from_directory("static", path)
+    return send_from_directory(app.static_folder, path)
 
 
 # --- API endpoints ---
@@ -209,4 +209,6 @@ def api_get_summary(period_type, period_date):
 
 if __name__ == "__main__":
     init_db()
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    port = int(os.getenv('PORT', 5000))
+    debug = os.getenv('FLASK_ENV') == 'development'
+    app.run(host="0.0.0.0", port=port, debug=debug, use_reloader=False)

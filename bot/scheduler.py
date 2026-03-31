@@ -1,12 +1,14 @@
 import logging
+import os
+import sys
 from datetime import datetime, timezone, timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from aiogram import Bot
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+from dotenv import load_dotenv
 
-import os
-import sys
+load_dotenv()
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from database.db import get_all_users
