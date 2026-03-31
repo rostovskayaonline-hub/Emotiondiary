@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Дневник эмоций</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- ===== Page: Log ===== -->
+<div id="page-log" class="page active">
+    <div class="page-header">Что ты чувствуешь?</div>
+
+    <div class="card">
+        <div class="card-title">Выбери эмоцию</div>
+        <div id="emotion-grid" class="emotion-grid"></div>
+    </div>
+
+    <div class="card">
+        <div class="intensity-section">
+            <div class="intensity-header">
+                <span class="intensity-label">Интенсивность</span>
+                <span id="intensity-value" class="intensity-value">5</span>
+            </div>
+            <div class="slider-container">
+                <input type="range" id="intensity-slider" min="1" max="10" value="5" step="1">
+                <div class="slider-labels">
+                    <span>Слабо</span>
+                    <span>Средне</span>
+                    <span>Сильно</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="note-section">
+            <label for="entry-note">Заметка (необязательно)</label>
+            <textarea
+                id="entry-note"
+                class="note-textarea"
+                placeholder="Почему ты это чувствуешь? Что произошло? Какие мысли?"
+                rows="3"
+            ></textarea>
+        </div>
+    </div>
+
+    <button id="submit-btn" class="submit-btn" disabled onclick="submitEntry()">
+        Записать
+    </button>
+</div>
+
+<!-- ===== Page: History ===== -->
+<div id="page-history" class="page">
+    <div class="page-header">История</div>
+
+    <div class="date-nav">
+        <button class="date-nav-btn" onclick="changeHistoryDate(-1)">‹</button>
+        <span id="history-date-label" class="date-nav-label"></span>
+        <button class="date-nav-btn" onclick="changeHistoryDate(1)">›</button>
+    </div>
+
+    <div id="history-entries">
+        <div class="empty-state">
+            <div class="empty-icon">📝</div>
+            <p>Нет записей</p>
+        </div>
+    </div>
+</div>
+
+<!-- ===== Page: Stats ===== -->
+<div id="page-stats" class="page">
+    <div class="page-header">Статистика</div>
+
+    <div class="period-tabs">
+        <button class="period-tab active" data-period="day" onclick="changePeriod('day')">День</button>
+        <button class="period-tab" data-period="week" onclick="changePeriod('week')">Неделя</button>
+        <button class="period-tab" data-period="month" onclick="changePeriod('month')">Месяц</button>
+    </div>
+
+    <div class="date-nav">
+        <button class="date-nav-btn" onclick="changeStatsDate(-1)">‹</button>
+        <span id="stats-date-label" class="date-nav-label"></span>
+        <button class="date-nav-btn" onclick="changeStatsDate(1)">›</button>
+    </div>
+
+    <div class="card">
+        <div id="stats-chart-container" class="chart-container">
+            <canvas id="stats-chart"></canvas>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-title">Эмоции за период</div>
+        <div id="stats-pills" class="stat-pills"></div>
+    </div>
+</div>
+
+<!-- ===== Page: Summary ===== -->
+<div id="page-summary" class="page">
+    <div class="page-header">Итоги</div>
+
+    <div class="period-tabs">
+        <button class="period-tab active" data-period="day" onclick="changeSummaryPeriod('day')">День</button>
+        <button class="period-tab" data-period="week" onclick="changeSummaryPeriod('week')">Неделя</button>
+        <button class="period-tab" data-period="month" onclick="changeSummaryPeriod('month')">Месяц</button>
+    </div>
+
+    <div class="date-nav">
+        <button class="date-nav-btn" onclick="changeSummaryDate(-1)">‹</button>
+        <span id="summary-date-label" class="date-nav-label"></span>
+        <button class="date-nav-btn" onclick="changeSummaryDate(1)">›</button>
+    </div>
+
+    <div class="summary-prompt">
+        <div class="prompt-title">Подсказки для рефлексии</div>
+        <div class="prompt-hints">
+            Какая эмоция преобладала сегодня?<br>
+            Что вызвало самые сильные чувства?<br>
+            Как я справлялась с трудными эмоциями?<br>
+            За что я благодарна?<br>
+            Что бы я хотела изменить?
+        </div>
+    </div>
+
+    <div class="card">
+        <textarea
+            id="summary-text"
+            class="summary-textarea"
+            placeholder="Напишите свои итоги и размышления за этот период..."
+            rows="6"
+        ></textarea>
+        <button class="save-btn" onclick="saveSummary()">Сохранить итог</button>
+    </div>
+</div>
+
+<!-- ===== Tab bar ===== -->
+<nav class="tab-bar">
+    <button class="tab-item active" data-tab="log">
+        <span class="tab-icon">✏️</span>
+        <span>Запись</span>
+    </button>
+    <button class="tab-item" data-tab="history">
+        <span class="tab-icon">📋</span>
+        <span>История</span>
+    </button>
+    <button class="tab-item" data-tab="stats">
+        <span class="tab-icon">📊</span>
+        <span>Графики</span>
+    </button>
+    <button class="tab-item" data-tab="summary">
+        <span class="tab-icon">📝</span>
+        <span>Итоги</span>
+    </button>
+</nav>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>
