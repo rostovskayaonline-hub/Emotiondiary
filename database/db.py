@@ -1,15 +1,17 @@
-import sqlite3
 import os
+import logging
 from datetime import datetime, date, timedelta
 
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "emotion_diary.db")
+import psycopg2
+from psycopg2.extras import RealDictCursor
+
+logger = logging.getLogger(__name__)
+
+DATABASE_URL = os.getenv("DATABASE_URL", "")
 
 
 def get_connection():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
+    conn = psycopg2.connect(DATABASE_URL)
     return conn
 
 
@@ -17,83 +19,97 @@ def init_db():
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.executescript("""
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY,
+            user_id BIGINT PRIMARY KEY,
             username TEXT,
             first_name TEXT,
             reminder_start_hour INTEGER DEFAULT 9,
             reminder_end_hour INTEGER DEFAULT 22,
             timezone_offset INTEGER DEFAULT 3,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP DEFAULT NOW()
         );
+    """)
 
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS emotion_entries (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
+            id SERIAL PRIMARY KEY,
+            user_id BIGINT NOT NULL REFERENCES users(user_id),
             emotion TEXT NOT NULL,
             intensity INTEGER NOT NULL CHECK(intensity BETWEEN 1 AND 10),
             note TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(user_id)
+            created_at TIMESTAMP DEFAULT NOW()
         );
+    """)
 
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS summaries (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
+            id SERIAL PRIMARY KEY,
+            user_id BIGINT NOT NULL REFERENCES users(user_id),
             period_type TEXT NOT NULL CHECK(period_type IN ('day', 'week', 'month')),
             period_date TEXT NOT NULL,
             summary_text TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(user_id)
+            created_at TIMESTAMP DEFAULT NOW()
         );
+    """)
 
+    cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_entries_user_date
             ON emotion_entries(user_id, created_at);
+    """)
+    cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_summaries_user_period
             ON summaries(user_id, period_type, period_date);
     """)
 
     conn.commit()
+    cursor.close()
     conn.close()
+    logger.info("Database initialized (PostgreSQL)")
 
 
 # --- User operations ---
 
 def get_or_create_user(user_id, username=None, first_name=None):
     conn = get_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
 
-    cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+    cursor.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
     user = cursor.fetchone()
 
     if not user:
         cursor.execute(
-            "INSERT INTO users (user_id, username, first_name) VALUES (?, ?, ?)",
+            "INSERT INTO users (user_id, username, first_name) VALUES (%s, %s, %s)",
             (user_id, username, first_name),
         )
         conn.commit()
-        cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+        cursor.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
         user = cursor.fetchone()
 
+    cursor.close()
     conn.close()
     return dict(user)
 
 
 def update_user_settings(user_id, reminder_start_hour, reminder_end_hour, timezone_offset):
     conn = get_connection()
-    conn.execute(
-        """UPDATE users SET reminder_start_hour = ?, reminder_end_hour = ?, timezone_offset = ?
-           WHERE user_id = ?""",
+    cursor = conn.cursor()
+    cursor.execute(
+        """UPDATE users SET reminder_start_hour = %s, reminder_end_hour = %s, timezone_offset = %s
+           WHERE user_id = %s""",
         (reminder_start_hour, reminder_end_hour, timezone_offset, user_id),
     )
     conn.commit()
+    cursor.close()
     conn.close()
 
 
 def get_all_users():
     conn = get_connection()
-    users = conn.execute("SELECT * FROM users").fetchall()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    cursor.execute("SELECT * FROM users")
+    users = cursor.fetchall()
+    cursor.close()
     conn.close()
     return [dict(u) for u in users]
 
@@ -125,71 +141,71 @@ def add_emotion_entry(user_id, emotion, intensity, note=None, local_time=None):
     cursor = conn.cursor()
     if local_time:
         cursor.execute(
-            "INSERT INTO emotion_entries (user_id, emotion, intensity, note, created_at) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO emotion_entries (user_id, emotion, intensity, note, created_at) VALUES (%s, %s, %s, %s, %s) RETURNING id",
             (user_id, emotion, intensity, note, local_time),
         )
     else:
         cursor.execute(
-            "INSERT INTO emotion_entries (user_id, emotion, intensity, note) VALUES (?, ?, ?, ?)",
+            "INSERT INTO emotion_entries (user_id, emotion, intensity, note) VALUES (%s, %s, %s, %s) RETURNING id",
             (user_id, emotion, intensity, note),
         )
+    entry_id = cursor.fetchone()[0]
     conn.commit()
-    entry_id = cursor.lastrowid
+    cursor.close()
     conn.close()
     return entry_id
 
 
 def get_entries_for_date(user_id, target_date):
     conn = get_connection()
-    entries = conn.execute(
-        """SELECT * FROM emotion_entries
-           WHERE user_id = ? AND date(created_at) = ?
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    cursor.execute(
+        """SELECT id, user_id, emotion, intensity, note,
+                  to_char(created_at, 'YYYY-MM-DD"T"HH24:MI:SS') as created_at
+           FROM emotion_entries
+           WHERE user_id = %s AND created_at::date = %s
            ORDER BY created_at""",
         (user_id, target_date),
-    ).fetchall()
+    )
+    entries = cursor.fetchall()
+    cursor.close()
     conn.close()
     return [dict(e) for e in entries]
 
 
 def get_entries_for_range(user_id, start_date, end_date):
     conn = get_connection()
-    entries = conn.execute(
-        """SELECT * FROM emotion_entries
-           WHERE user_id = ? AND date(created_at) BETWEEN ? AND ?
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    cursor.execute(
+        """SELECT id, user_id, emotion, intensity, note,
+                  to_char(created_at, 'YYYY-MM-DD"T"HH24:MI:SS') as created_at
+           FROM emotion_entries
+           WHERE user_id = %s AND created_at::date BETWEEN %s AND %s
            ORDER BY created_at""",
         (user_id, start_date, end_date),
-    ).fetchall()
+    )
+    entries = cursor.fetchall()
+    cursor.close()
     conn.close()
     return [dict(e) for e in entries]
 
 
 def get_daily_summary_data(user_id, target_date):
-    """Get aggregated emotion data for a single day."""
     entries = get_entries_for_date(user_id, target_date)
     return _aggregate_entries(entries)
 
 
 def get_weekly_summary_data(user_id, target_date):
-    """Get aggregated emotion data for the week containing target_date."""
     d = datetime.strptime(target_date, "%Y-%m-%d").date()
-    start = d - timedelta(days=d.weekday())  # Monday
-    end = start + timedelta(days=6)  # Sunday
+    start = d - timedelta(days=d.weekday())
+    end = start + timedelta(days=6)
 
     entries = get_entries_for_range(user_id, start.isoformat(), end.isoformat())
 
-    # Group by day and get dominant emotion per day
     days = {}
     for e in entries:
         day = e["created_at"][:10]
         days.setdefault(day, []).append(e)
-
-    daily_dominants = []
-    for day_entries in days.values():
-        agg = _aggregate_entries(day_entries)
-        if agg:
-            # Pick the emotion with highest average intensity
-            top = max(agg, key=lambda x: x["avg_intensity"])
-            daily_dominants.append(top)
 
     return {
         "start": start.isoformat(),
@@ -201,7 +217,6 @@ def get_weekly_summary_data(user_id, target_date):
 
 
 def get_monthly_summary_data(user_id, year, month):
-    """Get aggregated emotion data for a month."""
     start = date(year, month, 1)
     if month == 12:
         end = date(year + 1, 1, 1) - timedelta(days=1)
@@ -225,7 +240,6 @@ def get_monthly_summary_data(user_id, year, month):
 
 
 def _aggregate_entries(entries):
-    """Aggregate entries into emotion stats: count, avg intensity, total duration."""
     if not entries:
         return []
 
@@ -250,41 +264,49 @@ def _aggregate_entries(entries):
 
 def save_summary(user_id, period_type, period_date, summary_text):
     conn = get_connection()
-    # Upsert
-    existing = conn.execute(
-        "SELECT id FROM summaries WHERE user_id = ? AND period_type = ? AND period_date = ?",
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+    cursor.execute(
+        "SELECT id FROM summaries WHERE user_id = %s AND period_type = %s AND period_date = %s",
         (user_id, period_type, period_date),
-    ).fetchone()
+    )
+    existing = cursor.fetchone()
 
     if existing:
-        conn.execute(
-            "UPDATE summaries SET summary_text = ? WHERE id = ?",
+        cursor.execute(
+            "UPDATE summaries SET summary_text = %s WHERE id = %s",
             (summary_text, existing["id"]),
         )
     else:
-        conn.execute(
-            "INSERT INTO summaries (user_id, period_type, period_date, summary_text) VALUES (?, ?, ?, ?)",
+        cursor.execute(
+            "INSERT INTO summaries (user_id, period_type, period_date, summary_text) VALUES (%s, %s, %s, %s)",
             (user_id, period_type, period_date, summary_text),
         )
     conn.commit()
+    cursor.close()
     conn.close()
 
 
 def get_summary(user_id, period_type, period_date):
     conn = get_connection()
-    row = conn.execute(
-        "SELECT * FROM summaries WHERE user_id = ? AND period_type = ? AND period_date = ?",
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    cursor.execute(
+        "SELECT * FROM summaries WHERE user_id = %s AND period_type = %s AND period_date = %s",
         (user_id, period_type, period_date),
-    ).fetchone()
+    )
+    row = cursor.fetchone()
+    cursor.close()
     conn.close()
     return dict(row) if row else None
 
 
 def delete_emotion_entry(entry_id, user_id):
     conn = get_connection()
-    conn.execute(
-        "DELETE FROM emotion_entries WHERE id = ? AND user_id = ?",
+    cursor = conn.cursor()
+    cursor.execute(
+        "DELETE FROM emotion_entries WHERE id = %s AND user_id = %s",
         (entry_id, user_id),
     )
     conn.commit()
+    cursor.close()
     conn.close()
