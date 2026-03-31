@@ -120,13 +120,19 @@ EMOTIONS = [
 ]
 
 
-def add_emotion_entry(user_id, emotion, intensity, note=None):
+def add_emotion_entry(user_id, emotion, intensity, note=None, local_time=None):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO emotion_entries (user_id, emotion, intensity, note) VALUES (?, ?, ?, ?)",
-        (user_id, emotion, intensity, note),
-    )
+    if local_time:
+        cursor.execute(
+            "INSERT INTO emotion_entries (user_id, emotion, intensity, note, created_at) VALUES (?, ?, ?, ?, ?)",
+            (user_id, emotion, intensity, note, local_time),
+        )
+    else:
+        cursor.execute(
+            "INSERT INTO emotion_entries (user_id, emotion, intensity, note) VALUES (?, ?, ?, ?)",
+            (user_id, emotion, intensity, note),
+        )
     conn.commit()
     entry_id = cursor.lastrowid
     conn.close()

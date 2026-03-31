@@ -121,7 +121,9 @@ def api_add_entry():
     if not (1 <= intensity <= 10):
         return jsonify({"error": "intensity must be between 1 and 10"}), 400
 
-    entry_id = add_emotion_entry(user_id, emotion, intensity, note)
+    # Accept client local time if provided, otherwise server will use CURRENT_TIMESTAMP
+    local_time = data.get("local_time")  # ISO string from client e.g. "2026-03-31T14:30:00"
+    entry_id = add_emotion_entry(user_id, emotion, intensity, note, local_time)
     return jsonify({"id": entry_id, "status": "ok"})
 
 
@@ -205,6 +207,38 @@ def api_get_summary(period_type, period_date):
 
     summary = get_summary(user_id, period_type, period_date)
     return jsonify(summary or {"summary_text": ""})
+
+
+@app.route("/api/user/settings", methods=["GET"])
+def api_get_user_settings():
+    user_id = get_user_id_from_request()
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+    user = get_or_create_user(user_id)
+    return jsonify({
+        "reminder_start_hour": user["reminder_start_hour"],
+        "reminder_end_hour": user["reminder_end_hour"],
+        "timezone_offset": user["timezone_offset"],
+    })
+
+
+@app.route("/api/user/settings", methods=["POST"])
+def api_update_user_settings():
+    from database.db import update_user_settings
+    user_id = get_user_id_from_request()
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.json
+    start_h = data.get("reminder_start_hour", 9)
+    end_h = data.get("reminder_end_hour", 22)
+    tz = data.get("timezone_offset", 3)
+
+    if not (0 <= start_h < end_h <= 23):
+        return jsonify({"error": "Invalid hours"}), 400
+
+    update_user_settings(user_id, start_h, end_h, tz)
+    return jsonify({"status": "ok"})
 
 
 if __name__ == "__main__":

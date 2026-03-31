@@ -137,6 +137,38 @@
     </div>
 </div>
 
+<!-- ===== Settings Modal ===== -->
+<div id="settings-modal" class="modal-overlay" onclick="if(event.target===this)closeSettings()">
+    <div class="modal-content">
+        <div class="modal-header">
+            <span class="modal-title">Настройки напоминаний</span>
+            <button class="modal-close" onclick="closeSettings()">&times;</button>
+        </div>
+        <p class="modal-desc">Бот будет напоминать записать эмоции каждый час в этот промежуток</p>
+
+        <div class="settings-row">
+            <span class="settings-label">Начало</span>
+            <div class="settings-control">
+                <button class="settings-btn" onclick="adjustSetting('settings-start',-1)">&minus;</button>
+                <span id="settings-start-label" class="settings-value">9:00</span>
+                <button class="settings-btn" onclick="adjustSetting('settings-start',1)">+</button>
+            </div>
+            <input type="hidden" id="settings-start" value="9">
+        </div>
+        <div class="settings-row">
+            <span class="settings-label">Конец</span>
+            <div class="settings-control">
+                <button class="settings-btn" onclick="adjustSetting('settings-end',-1)">&minus;</button>
+                <span id="settings-end-label" class="settings-value">22:00</span>
+                <button class="settings-btn" onclick="adjustSetting('settings-end',1)">+</button>
+            </div>
+            <input type="hidden" id="settings-end" value="22">
+        </div>
+
+        <button class="submit-btn" onclick="saveSettings()" style="margin-top:16px">Сохранить</button>
+    </div>
+</div>
+
 <!-- ===== Tab bar ===== -->
 <nav class="tab-bar">
     <button class="tab-item active" data-tab="log">
@@ -154,6 +186,10 @@
     <button class="tab-item" data-tab="summary">
         <span class="tab-icon">📝</span>
         <span>Итоги</span>
+    </button>
+    <button class="tab-item" onclick="openSettings()">
+        <span class="tab-icon">⚙️</span>
+        <span>Настройки</span>
     </button>
 </nav>
 

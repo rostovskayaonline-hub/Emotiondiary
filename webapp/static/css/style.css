@@ -111,14 +111,17 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: center;
     gap: 4px;
-    padding: 10px 4px;
+    aspect-ratio: 1;
+    padding: 6px 4px;
     border: 2px solid transparent;
     border-radius: var(--radius-sm);
     background: var(--bg-secondary);
     cursor: pointer;
     transition: all 0.2s;
     -webkit-tap-highlight-color: transparent;
+    overflow: hidden;
 }
 
 .emotion-btn:active {
@@ -140,6 +143,8 @@ body {
     color: var(--text-secondary);
     text-align: center;
     line-height: 1.2;
+    word-break: break-word;
+    max-width: 100%;
 }
 
 .emotion-btn.selected .label {
@@ -565,6 +570,111 @@ input[type="range"]::-webkit-slider-thumb {
     font-size: 13px;
     color: var(--text-secondary);
     line-height: 1.6;
+}
+
+/* --- Settings Modal --- */
+.modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 300;
+    align-items: flex-end;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+}
+
+.modal-overlay.open {
+    display: flex;
+}
+
+.modal-content {
+    background: var(--bg-primary);
+    border-radius: var(--radius) var(--radius) 0 0;
+    padding: 24px 20px calc(env(safe-area-inset-bottom, 8px) + 16px);
+    width: 100%;
+    max-width: 480px;
+    animation: slideUp 0.25s ease;
+}
+
+@keyframes slideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.modal-title {
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 4px 8px;
+}
+
+.modal-desc {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 20px;
+    line-height: 1.4;
+}
+
+.settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.settings-label {
+    font-size: 15px;
+    font-weight: 500;
+}
+
+.settings-control {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.settings-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--bg-secondary);
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.settings-btn:active {
+    background: var(--border);
+}
+
+.settings-value {
+    font-size: 16px;
+    font-weight: 600;
+    min-width: 50px;
+    text-align: center;
 }
 
 /* --- Timeline --- */

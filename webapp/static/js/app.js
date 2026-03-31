@@ -32,9 +32,14 @@ async function api(path, options = {}) {
 let emotions = [];
 let selectedEmotion = null;
 let currentIntensity = 5;
-let currentDate = new Date();
-let currentPeriod = 'day';
 let chartInstance = null;
+
+// Separate date state per tab so switching tabs doesn't carry over
+let historyDate = new Date();
+let statsDate = new Date();
+let statsPeriod = 'day';
+let summaryDate = new Date();
+let summaryPeriod = 'day';
 
 // --- Init ---
 document.addEventListener('DOMContentLoaded', async () => {
@@ -72,9 +77,21 @@ function navigateToTab(tab) {
     document.querySelector(`.tab-item[data-tab="${tab}"]`)?.classList.add('active');
     document.getElementById(`page-${tab}`)?.classList.add('active');
 
-    if (tab === 'history') loadHistory();
-    if (tab === 'stats') loadStats();
-    if (tab === 'summary') loadSummary();
+    // Reset date to today when entering a tab
+    if (tab === 'history') {
+        historyDate = new Date();
+        loadHistory();
+    }
+    if (tab === 'stats') {
+        statsDate = new Date();
+        statsPeriod = 'day';
+        loadStats();
+    }
+    if (tab === 'summary') {
+        summaryDate = new Date();
+        summaryPeriod = 'day';
+        loadSummary();
+    }
 }
 
 // --- Emotion grid ---
@@ -124,6 +141,15 @@ async function submitEntry() {
     btn.disabled = true;
     btn.textContent = 'Сохраняю...';
 
+    // Send local time so server stores it in user's timezone
+    const now = new Date();
+    const localISO = now.getFullYear() + '-' +
+        String(now.getMonth() + 1).padStart(2, '0') + '-' +
+        String(now.getDate()).padStart(2, '0') + 'T' +
+        String(now.getHours()).padStart(2, '0') + ':' +
+        String(now.getMinutes()).padStart(2, '0') + ':' +
+        String(now.getSeconds()).padStart(2, '0');
+
     try {
         await api('/api/entries', {
             method: 'POST',
@@ -131,6 +157,7 @@ async function submitEntry() {
                 emotion: selectedEmotion,
                 intensity: currentIntensity,
                 note: note,
+                local_time: localISO,
             }),
         });
 
@@ -157,12 +184,12 @@ async function submitEntry() {
 
 // --- History ---
 async function loadHistory() {
-    const dateStr = formatDateISO(currentDate);
+    const dateStr = formatDateISO(historyDate);
     const container = document.getElementById('history-entries');
     const dateLabel = document.getElementById('history-date-label');
     if (!container) return;
 
-    dateLabel.textContent = formatDateRu(currentDate);
+    dateLabel.textContent = formatDateRu(historyDate);
     container.innerHTML = '<div class="empty-state"><p>Загрузка...</p></div>';
 
     try {
@@ -195,7 +222,7 @@ async function loadHistory() {
                             </div>
                             ${entry.note ? `<div class="entry-note">${escapeHtml(entry.note)}</div>` : ''}
                         </div>
-                        <button class="entry-delete" onclick="deleteEntry(${entry.id})" title="Удалить">×</button>
+                        <button class="entry-delete" onclick="deleteEntry(${entry.id})" title="Удалить">&times;</button>
                     </div>
                 </div>`;
         }).join('') + '</div>';
@@ -206,7 +233,7 @@ async function loadHistory() {
 }
 
 function changeHistoryDate(delta) {
-    currentDate.setDate(currentDate.getDate() + delta);
+    historyDate.setDate(historyDate.getDate() + delta);
     loadHistory();
 }
 
@@ -223,38 +250,37 @@ async function deleteEntry(id) {
 
 // --- Stats ---
 async function loadStats() {
-    const periodTabs = document.querySelectorAll('.period-tab');
+    const periodTabs = document.querySelectorAll('#page-stats .period-tab');
     periodTabs.forEach(tab => {
-        tab.classList.toggle('active', tab.dataset.period === currentPeriod);
+        tab.classList.toggle('active', tab.dataset.period === statsPeriod);
     });
 
-    if (currentPeriod === 'day') await loadDayStats();
-    else if (currentPeriod === 'week') await loadWeekStats();
+    if (statsPeriod === 'day') await loadDayStats();
+    else if (statsPeriod === 'week') await loadWeekStats();
     else await loadMonthStats();
 }
 
 function changePeriod(period) {
-    currentPeriod = period;
+    statsPeriod = period;
     loadStats();
 }
 
 async function loadDayStats() {
-    const dateStr = formatDateISO(currentDate);
-    const statsContainer = document.getElementById('stats-content');
+    const dateStr = formatDateISO(statsDate);
     const dateLabel = document.getElementById('stats-date-label');
-    dateLabel.textContent = formatDateRu(currentDate);
+    dateLabel.textContent = formatDateRu(statsDate);
 
     try {
         const data = await api(`/api/stats/day/${dateStr}`);
         renderDayChart(data);
         renderStatPills(data.stats);
     } catch (e) {
-        statsContainer.innerHTML = '<div class="empty-state"><p>Ошибка загрузки</p></div>';
+        console.error(e);
     }
 }
 
 async function loadWeekStats() {
-    const dateStr = formatDateISO(currentDate);
+    const dateStr = formatDateISO(statsDate);
     const dateLabel = document.getElementById('stats-date-label');
 
     try {
@@ -268,8 +294,8 @@ async function loadWeekStats() {
 }
 
 async function loadMonthStats() {
-    const year = currentDate.getFullYear();
-    const month = currentDate.getMonth() + 1;
+    const year = statsDate.getFullYear();
+    const month = statsDate.getMonth() + 1;
     const dateLabel = document.getElementById('stats-date-label');
     const monthNames = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
         'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
@@ -285,12 +311,12 @@ async function loadMonthStats() {
 }
 
 function changeStatsDate(delta) {
-    if (currentPeriod === 'day') {
-        currentDate.setDate(currentDate.getDate() + delta);
-    } else if (currentPeriod === 'week') {
-        currentDate.setDate(currentDate.getDate() + delta * 7);
+    if (statsPeriod === 'day') {
+        statsDate.setDate(statsDate.getDate() + delta);
+    } else if (statsPeriod === 'week') {
+        statsDate.setDate(statsDate.getDate() + delta * 7);
     } else {
-        currentDate.setMonth(currentDate.getMonth() + delta);
+        statsDate.setMonth(statsDate.getMonth() + delta);
     }
     loadStats();
 }
@@ -309,7 +335,6 @@ function renderDayChart(data) {
         return;
     }
 
-    // Ensure canvas exists
     ensureCanvas();
 
     const timeLabels = data.entries.map(e => e.created_at?.substring(11, 16) || '');
@@ -341,7 +366,6 @@ function renderWeekChart(data) {
     const emoMap = Object.fromEntries(emotions.map(e => [e.id, e]));
     const dayNames = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 
-    // Build 7 days from start
     const startDate = new Date(data.start + 'T00:00:00');
     const labels = [];
     const dayKeys = [];
@@ -352,7 +376,6 @@ function renderWeekChart(data) {
         dayKeys.push(formatDateISO(d));
     }
 
-    // Get unique emotions across the week
     const allEmotions = new Set();
     for (const dayData of Object.values(data.daily_data || {})) {
         dayData.forEach(s => allEmotions.add(s.emotion));
@@ -394,7 +417,6 @@ function renderMonthChart(data) {
 
     const emoMap = Object.fromEntries(emotions.map(e => [e.id, e]));
 
-    // Pie/doughnut of overall emotions
     const overall = data.overall || [];
     if (overall.length === 0) {
         document.getElementById('stats-chart-container').innerHTML =
@@ -475,7 +497,7 @@ function renderStatPills(stats) {
             <div class="stat-pill">
                 <span class="pill-emoji">${emo.emoji}</span>
                 <span>${emo.name}</span>
-                <span class="pill-count">×${s.count}</span>
+                <span class="pill-count">&times;${s.count}</span>
                 <span style="color: var(--text-secondary)">(${s.avg_intensity}/10)</span>
             </div>`;
     }).join('');
@@ -485,18 +507,18 @@ function renderStatPills(stats) {
 async function loadSummary() {
     const periodTabs = document.querySelectorAll('#page-summary .period-tab');
     periodTabs.forEach(tab => {
-        tab.classList.toggle('active', tab.dataset.period === currentPeriod);
+        tab.classList.toggle('active', tab.dataset.period === summaryPeriod);
     });
 
     const dateLabel = document.getElementById('summary-date-label');
     const textarea = document.getElementById('summary-text');
     let periodDate;
 
-    if (currentPeriod === 'day') {
-        periodDate = formatDateISO(currentDate);
-        dateLabel.textContent = formatDateRu(currentDate);
-    } else if (currentPeriod === 'week') {
-        const d = new Date(currentDate);
+    if (summaryPeriod === 'day') {
+        periodDate = formatDateISO(summaryDate);
+        dateLabel.textContent = formatDateRu(summaryDate);
+    } else if (summaryPeriod === 'week') {
+        const d = new Date(summaryDate);
         const day = d.getDay() || 7;
         d.setDate(d.getDate() - day + 1);
         periodDate = formatDateISO(d);
@@ -504,17 +526,17 @@ async function loadSummary() {
         end.setDate(end.getDate() + 6);
         dateLabel.textContent = `${formatDateShort(formatDateISO(d))} — ${formatDateShort(formatDateISO(end))}`;
     } else {
-        periodDate = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
+        periodDate = `${summaryDate.getFullYear()}-${String(summaryDate.getMonth() + 1).padStart(2, '0')}`;
         const monthNames = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
             'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
-        dateLabel.textContent = `${monthNames[currentDate.getMonth()]} ${currentDate.getFullYear()}`;
+        dateLabel.textContent = `${monthNames[summaryDate.getMonth()]} ${summaryDate.getFullYear()}`;
     }
 
-    textarea.dataset.periodType = currentPeriod;
+    textarea.dataset.periodType = summaryPeriod;
     textarea.dataset.periodDate = periodDate;
 
     try {
-        const data = await api(`/api/summary/${currentPeriod}/${periodDate}`);
+        const data = await api(`/api/summary/${summaryPeriod}/${periodDate}`);
         textarea.value = data.summary_text || '';
     } catch {
         textarea.value = '';
@@ -549,19 +571,85 @@ async function saveSummary() {
 }
 
 function changeSummaryPeriod(period) {
-    currentPeriod = period;
+    summaryPeriod = period;
     loadSummary();
 }
 
 function changeSummaryDate(delta) {
-    if (currentPeriod === 'day') {
-        currentDate.setDate(currentDate.getDate() + delta);
-    } else if (currentPeriod === 'week') {
-        currentDate.setDate(currentDate.getDate() + delta * 7);
+    if (summaryPeriod === 'day') {
+        summaryDate.setDate(summaryDate.getDate() + delta);
+    } else if (summaryPeriod === 'week') {
+        summaryDate.setDate(summaryDate.getDate() + delta * 7);
     } else {
-        currentDate.setMonth(currentDate.getMonth() + delta);
+        summaryDate.setMonth(summaryDate.getMonth() + delta);
     }
     loadSummary();
+}
+
+// --- Settings modal ---
+async function openSettings() {
+    const modal = document.getElementById('settings-modal');
+    modal.classList.add('open');
+
+    try {
+        const data = await api('/api/user/settings');
+        document.getElementById('settings-start').value = data.reminder_start_hour;
+        document.getElementById('settings-end').value = data.reminder_end_hour;
+        updateSettingsDisplay();
+    } catch (e) {
+        // Use defaults
+        document.getElementById('settings-start').value = 9;
+        document.getElementById('settings-end').value = 22;
+        updateSettingsDisplay();
+    }
+}
+
+function closeSettings() {
+    document.getElementById('settings-modal').classList.remove('open');
+}
+
+function updateSettingsDisplay() {
+    const start = document.getElementById('settings-start').value;
+    const end = document.getElementById('settings-end').value;
+    document.getElementById('settings-start-label').textContent = `${start}:00`;
+    document.getElementById('settings-end-label').textContent = `${end}:00`;
+}
+
+function adjustSetting(field, delta) {
+    const input = document.getElementById(field);
+    const otherField = field === 'settings-start' ? 'settings-end' : 'settings-start';
+    const other = parseInt(document.getElementById(otherField).value);
+    let val = parseInt(input.value) + delta;
+
+    if (field === 'settings-start') {
+        val = Math.max(0, Math.min(val, other - 1));
+    } else {
+        val = Math.max(other + 1, Math.min(val, 23));
+    }
+
+    input.value = val;
+    updateSettingsDisplay();
+}
+
+async function saveSettings() {
+    const start = parseInt(document.getElementById('settings-start').value);
+    const end = parseInt(document.getElementById('settings-end').value);
+    const tz = -(new Date().getTimezoneOffset() / 60); // auto-detect from browser
+
+    try {
+        await api('/api/user/settings', {
+            method: 'POST',
+            body: JSON.stringify({
+                reminder_start_hour: start,
+                reminder_end_hour: end,
+                timezone_offset: tz,
+            }),
+        });
+        showToast('Настройки сохранены!');
+        closeSettings();
+    } catch (e) {
+        showToast('Ошибка сохранения');
+    }
 }
 
 // --- Utils ---
